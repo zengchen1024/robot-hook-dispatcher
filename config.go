@@ -16,8 +16,9 @@ func (c *configuration) SetDefault() {}
 
 type accessConfig struct {
 	Topic          string `json:"topic" required:"true"`
-	Endpoint       string `json:"endpoint" required:"true"`
-	ConcurrentSize int    `json:"concurrent_size"`
+	UserAgent      string `json:"user_agent" required:"true"`
+	AccessEndpoint string `json:"access_endpoint" required:"true"`
+	ConcurrentSize int    `json:"concurrent_size" required:"true"`
 }
 
 func (a *accessConfig) validate() error {
@@ -25,15 +26,17 @@ func (a *accessConfig) validate() error {
 		return errors.New("missing topic")
 	}
 
-	if a.Endpoint == "" {
-		return errors.New("missing endpoint")
+	if a.UserAgent == "" {
+		return errors.New("missing user_agent")
+	}
+
+	if a.AccessEndpoint == "" {
+		return errors.New("missing access_endpoint")
+	}
+
+	if a.ConcurrentSize <= 0 {
+		return errors.New("Concurrent_size must be > 0")
 	}
 
 	return nil
-}
-
-func (a *accessConfig) setDefault() {
-	if a.ConcurrentSize <= 0 {
-		a.ConcurrentSize = 40
-	}
 }

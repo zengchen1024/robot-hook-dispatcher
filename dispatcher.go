@@ -12,17 +12,24 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+const (
+	headerHookDispatchExit   = "HOOK_DISPATCH_EXIT"
+	headerHookDispatchAdjust = "HOOK_DISPATCH_ADJUST"
+	headerUserAgent          = "User-Agent"
+)
+
 type dispatcher struct {
 	hc        utils.HttpClient
 	topic     string
 	endpoint  string
+	userAgent string
 	getConfig func() (*configuration, error)
 
-	messages        chan *mq.Message
-	messageChanSize int
+	messageChan      chan *mq.Message
+	messageChanEmpty chan struct{}
+	messageChanSize  int
 
 	adjustmentDone chan struct{}
-	chanEmpty      chan struct{}
 	done           chan struct{}
 }
 
@@ -37,15 +44,16 @@ func newDispatcher(getConfig func() (*configuration, error)) (*dispatcher, error
 	return &dispatcher{
 		hc:        utils.HttpClient{MaxRetries: 3},
 		topic:     cfg.Topic,
-		endpoint:  cfg.Endpoint,
+		endpoint:  cfg.AccessEndpoint,
+		userAgent: cfg.UserAgent,
 		getConfig: getConfig,
 
-		messages:        make(chan *mq.Message, size),
+		messageChan:     make(chan *mq.Message, size),
 		messageChanSize: size,
 
-		adjustmentDone: make(chan struct{}),
-		chanEmpty:      make(chan struct{}),
-		done:           make(chan struct{}),
+		messageChanEmpty: make(chan struct{}),
+		adjustmentDone:   make(chan struct{}),
+		done:             make(chan struct{}),
 	}, nil
 }
 
@@ -63,10 +71,10 @@ func (d *dispatcher) run(ctx context.Context, log *logrus.Entry) error {
 
 	msg := mq.Message{
 		Header: map[string]string{
-			"adjust_concurrent_size": "exit",
+			headerHookDispatchExit: "exit",
 		},
 	}
-	d.messages <- &msg
+	d.messageChan <- &msg
 
 	<-d.done
 
@@ -74,7 +82,7 @@ func (d *dispatcher) run(ctx context.Context, log *logrus.Entry) error {
 }
 
 func (d *dispatcher) handle(event mq.Event) error {
-	d.adjust()
+	d.adjustConcurrentSize()
 
 	msg := event.Message()
 
@@ -82,12 +90,12 @@ func (d *dispatcher) handle(event mq.Event) error {
 		return err
 	}
 
-	d.messages <- msg
+	d.messageChan <- msg
 
 	return nil
 }
 
-func (d *dispatcher) adjust() {
+func (d *dispatcher) adjustConcurrentSize() {
 	cfg, err := d.getConfig()
 	if err != nil {
 		return
@@ -100,14 +108,14 @@ func (d *dispatcher) adjust() {
 
 	msg := mq.Message{
 		Header: map[string]string{
-			"adjust_concurrent_size": "adjust_concurrent_size",
+			headerHookDispatchAdjust: "adjust_concurrent_size",
 		},
 	}
-	d.messages <- &msg
+	d.messageChan <- &msg
 
-	<-d.chanEmpty
+	<-d.messageChanEmpty
 
-	d.messages = make(chan *mq.Message, size)
+	d.messageChan = make(chan *mq.Message, size)
 	d.messageChanSize = size
 
 	d.adjustmentDone <- struct{}{}
@@ -120,12 +128,12 @@ func (d *dispatcher) validateMessage(msg *mq.Message) error {
 		return errors.New("get a nil msg from broker")
 	}
 
-	if len(msg.Header) == 0 || msg.Header["User-Agent"] != "Robot-Gitee-Access" {
-		return errors.New("unexpect gitee message: Missing User-Agent Header")
+	if len(msg.Header) == 0 || msg.Header[headerUserAgent] != d.userAgent {
+		return errors.New("unexpect message: invalid header")
 	}
 
 	if len(msg.Body) == 0 {
-		return errors.New("unexpect gitee message: The payload is empty")
+		return errors.New("unexpect message: The payload is empty")
 	}
 
 	return nil
@@ -151,13 +159,13 @@ func (d *dispatcher) dispatch(log *logrus.Entry) {
 
 	for {
 		select {
-		case msg := <-d.messages:
-			if msg.Header[""] == "" {
-				d.chanEmpty <- struct{}{}
+		case msg := <-d.messageChan:
+			if msg.Header[headerHookDispatchAdjust] != "" {
+				d.messageChanEmpty <- struct{}{}
 
 				<-d.adjustmentDone
 
-			} else if msg.Header[""] == "exit" {
+			} else if msg.Header[headerHookDispatchExit] != "" {
 				close(d.done)
 
 				return

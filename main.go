@@ -50,17 +50,17 @@ func main() {
 
 	o := gatherOptions(flag.NewFlagSet(os.Args[0], flag.ExitOnError), os.Args[1:]...)
 	if err := o.Validate(); err != nil {
-		logrus.WithError(err).Fatal("Invalid options")
+		log.Fatalf("Invalid options, err:%s", err.Error())
 	}
 
 	// init kafka
 	kafkaCfg, err := loadKafkaConfig(o.kafkamqConfigFile)
 	if err != nil {
-		logrus.Fatalf("Error loading kfk config, err:%v", err)
+		log.Fatalf("Error loading kfk config, err:%v", err)
 	}
 
 	if err := connetKafka(&kafkaCfg); err != nil {
-		logrus.Fatalf("Error connecting kfk mq, err:%v", err)
+		log.Fatalf("Error connecting kfk mq, err:%v", err)
 	}
 
 	defer kafka.Disconnect()
@@ -70,7 +70,7 @@ func main() {
 		return new(configuration)
 	})
 	if err := configAgent.Start(o.service.ConfigFile); err != nil {
-		logrus.WithError(err).Fatal("Error starting config agent.")
+		log.WithError(err).Fatal("Error starting config agent.")
 	}
 
 	defer configAgent.Stop()
