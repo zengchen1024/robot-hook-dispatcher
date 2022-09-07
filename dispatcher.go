@@ -163,6 +163,7 @@ func (d *dispatcher) dispatch(log *logrus.Entry) {
 			if msg.Header[headerHookDispatchAdjust] != "" {
 				d.messageChanEmpty <- struct{}{}
 
+				// Must wait. Otherwise it will listen on the old chan.
 				<-d.adjustmentDone
 
 			} else if msg.Header[headerHookDispatchExit] != "" {
