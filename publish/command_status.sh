@@ -21,9 +21,10 @@ repository=${REPOSITORY_OVERRIDE:-$repository}
 
 image_tag="${branch}-${commit_id}"
 image_tag=${IMAGE_TAG_OVERRIDE:-$image_tag}
+image_path=${IMAGE_PATH_OVERRIDE:-root}
 
 image_registry=${IMAGE_REGISTRY_OVERRIDE:-swr.cn-north-4.myhuaweicloud.com}
-image_repo=${IMAGE_REPO_OVERRIDE:-opensourceway/robot/$repository}
+image_repo=${IMAGE_REPO_OVERRIDE:-opensourceway/${image_path}/$repository}
 
 cat <<EOF
 IMAGE_REGISTRY ${image_registry}
