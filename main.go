@@ -22,6 +22,7 @@ import (
 
 type options struct {
 	service           liboptions.ServiceOptions
+	enableDebug       bool
 	kafkamqConfigFile string
 }
 
@@ -39,6 +40,11 @@ func gatherOptions(fs *flag.FlagSet, args ...string) options {
 		"Path to the file containing config of kafkamq.",
 	)
 
+	fs.BoolVar(
+		&o.enableDebug, "enable_debug", false,
+		"whether to enable debug model.",
+	)
+
 	_ = fs.Parse(args)
 
 	return o
@@ -53,6 +59,11 @@ func main() {
 	o := gatherOptions(flag.NewFlagSet(os.Args[0], flag.ExitOnError), os.Args[1:]...)
 	if err := o.Validate(); err != nil {
 		log.Fatalf("Invalid options, err:%s", err.Error())
+	}
+
+	if o.enableDebug {
+		logrus.SetLevel(logrus.DebugLevel)
+		logrus.Debug("debug enabled.")
 	}
 
 	// init kafka
@@ -84,7 +95,7 @@ func main() {
 		}
 
 		return nil, errors.New("can't convert to configuration")
-	})
+	}, log)
 	if err != nil {
 		log.Fatalf("Error new dispatcherj, err:%s", err.Error())
 	}
@@ -188,7 +199,7 @@ func run(d *dispatcher, log *logrus.Entry) {
 		}
 	}(ctx)
 
-	if err := d.run(ctx, log); err != nil {
+	if err := d.run(ctx); err != nil {
 		log.Errorf("subscribe failed, err:%v", err)
 	}
 }
