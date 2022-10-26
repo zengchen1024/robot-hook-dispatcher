@@ -48,7 +48,7 @@ func newDispatcher(getConfig func() (*configuration, error), log *logrus.Entry) 
 
 	return &dispatcher{
 		log:       log,
-		hc:        utils.HttpClient{MaxRetries: 3},
+		hc:        utils.NewHttpClient(3),
 		topic:     cfg.Topic,
 		endpoint:  cfg.AccessEndpoint,
 		userAgent: cfg.UserAgent,
