@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/opensourceways/community-robot-lib/kafka"
 	"github.com/opensourceways/community-robot-lib/mq"
@@ -28,6 +29,9 @@ type dispatcher struct {
 	messageChan      chan *mq.Message
 	messageChanEmpty chan struct{}
 	messageChanSize  int
+
+	starttime time.Time
+	sentNum   int
 
 	adjustmentDone chan struct{}
 	done           chan struct{}
@@ -92,6 +96,19 @@ func (d *dispatcher) handle(event mq.Event) error {
 
 	d.messageChan <- msg
 
+	d.sentNum++
+
+	if d.sentNum == 1 {
+		d.starttime = time.Now()
+	} else if d.sentNum >= d.messageChanSize {
+		d.sentNum = 0
+
+		now := time.Now()
+		if v := d.starttime.Add(time.Second); v.After(now) {
+			time.Sleep(v.Sub(now))
+		}
+	}
+
 	return nil
 }
 
@@ -154,7 +171,9 @@ func (d *dispatcher) dispatch(log *logrus.Entry) {
 		}
 		req.Header = h
 
-		return d.hc.ForwardTo(req, nil)
+		_, err = d.hc.ForwardTo(req, nil)
+
+		return err
 	}
 
 	for {
