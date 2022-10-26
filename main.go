@@ -199,7 +199,7 @@ func run(d *dispatcher, log *logrus.Entry) {
 		}
 	}(ctx)
 
-	if err := d.run(ctx, log); err != nil {
+	if err := d.run(ctx); err != nil {
 		log.Errorf("subscribe failed, err:%v", err)
 	}
 }

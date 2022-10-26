@@ -63,13 +63,13 @@ func newDispatcher(getConfig func() (*configuration, error), log *logrus.Entry) 
 	}, nil
 }
 
-func (d *dispatcher) run(ctx context.Context, log *logrus.Entry) error {
+func (d *dispatcher) run(ctx context.Context) error {
 	s, err := kafka.Subscribe(d.topic, d.handle)
 	if err != nil {
 		return err
 	}
 
-	go d.dispatch(log)
+	go d.dispatch()
 
 	<-ctx.Done()
 
@@ -162,7 +162,7 @@ func (d *dispatcher) validateMessage(msg *mq.Message) error {
 	return nil
 }
 
-func (d *dispatcher) dispatch(log *logrus.Entry) {
+func (d *dispatcher) dispatch() {
 	send := func(msg *mq.Message) error {
 		req, err := http.NewRequest(
 			http.MethodPost, d.endpoint, bytes.NewBuffer(msg.Body),
@@ -198,7 +198,7 @@ func (d *dispatcher) dispatch(log *logrus.Entry) {
 
 			} else {
 				if err := send(msg); err != nil {
-					log.Errorf("send message, err:%s", err.Error())
+					d.log.Errorf("send message, err:%s", err.Error())
 				}
 			}
 		}
