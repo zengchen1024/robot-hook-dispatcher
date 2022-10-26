@@ -20,6 +20,7 @@ const (
 )
 
 type dispatcher struct {
+	log       *logrus.Entry
 	hc        utils.HttpClient
 	topic     string
 	endpoint  string
@@ -37,7 +38,7 @@ type dispatcher struct {
 	done           chan struct{}
 }
 
-func newDispatcher(getConfig func() (*configuration, error)) (*dispatcher, error) {
+func newDispatcher(getConfig func() (*configuration, error), log *logrus.Entry) (*dispatcher, error) {
 	v, err := getConfig()
 	if err != nil {
 		return nil, err
@@ -46,6 +47,7 @@ func newDispatcher(getConfig func() (*configuration, error)) (*dispatcher, error
 	size := cfg.ConcurrentSize
 
 	return &dispatcher{
+		log:       log,
 		hc:        utils.HttpClient{MaxRetries: 3},
 		topic:     cfg.Topic,
 		endpoint:  cfg.AccessEndpoint,
@@ -96,17 +98,21 @@ func (d *dispatcher) handle(event mq.Event) error {
 
 	d.messageChan <- msg
 
-	d.sentNum++
-
-	if d.sentNum == 1 {
+	if d.sentNum++; d.sentNum == 1 {
 		d.starttime = time.Now()
 	} else if d.sentNum >= d.messageChanSize {
-		d.sentNum = 0
-
 		now := time.Now()
 		if v := d.starttime.Add(time.Second); v.After(now) {
-			time.Sleep(v.Sub(now))
+			du := v.Sub(now)
+			time.Sleep(du)
+
+			d.log.Debugf(
+				"will sleep %s after sending %d events",
+				du.String(), d.sentNum,
+			)
 		}
+
+		d.sentNum = 0
 	}
 
 	return nil
