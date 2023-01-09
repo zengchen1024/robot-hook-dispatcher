@@ -14,9 +14,7 @@ import (
 )
 
 const (
-	headerHookDispatchExit   = "HOOK_DISPATCH_EXIT"
-	headerHookDispatchAdjust = "HOOK_DISPATCH_ADJUST"
-	headerUserAgent          = "User-Agent"
+	headerUserAgent = "User-Agent"
 )
 
 type dispatcher struct {
@@ -27,15 +25,8 @@ type dispatcher struct {
 	userAgent string
 	getConfig func() (*configuration, error)
 
-	messageChan      chan *mq.Message
-	messageChanEmpty chan struct{}
-	messageChanSize  int
-
-	starttime time.Time
+	startTime time.Time
 	sentNum   int
-
-	adjustmentDone chan struct{}
-	done           chan struct{}
 }
 
 func newDispatcher(getConfig func() (*configuration, error), log *logrus.Entry) (*dispatcher, error) {
@@ -44,7 +35,6 @@ func newDispatcher(getConfig func() (*configuration, error), log *logrus.Entry) 
 		return nil, err
 	}
 	cfg := &v.Config
-	size := cfg.ConcurrentSize
 
 	return &dispatcher{
 		log:       log,
@@ -53,13 +43,6 @@ func newDispatcher(getConfig func() (*configuration, error), log *logrus.Entry) 
 		endpoint:  cfg.AccessEndpoint,
 		userAgent: cfg.UserAgent,
 		getConfig: getConfig,
-
-		messageChan:     make(chan *mq.Message, size),
-		messageChanSize: size,
-
-		messageChanEmpty: make(chan struct{}),
-		adjustmentDone:   make(chan struct{}),
-		done:             make(chan struct{}),
 	}, nil
 }
 
@@ -69,40 +52,35 @@ func (d *dispatcher) run(ctx context.Context) error {
 		return err
 	}
 
-	go d.dispatch()
-
 	<-ctx.Done()
 
-	s.Unsubscribe()
-
-	msg := mq.Message{
-		Header: map[string]string{
-			headerHookDispatchExit: "exit",
-		},
-	}
-	d.messageChan <- &msg
-
-	<-d.done
-
-	return nil
+	return s.Unsubscribe()
 }
 
 func (d *dispatcher) handle(event mq.Event) error {
-	d.adjustConcurrentSize()
-
 	msg := event.Message()
-
 	if err := d.validateMessage(msg); err != nil {
 		return err
 	}
 
-	d.messageChan <- msg
+	d.dispatch(msg)
+
+	d.speedControl()
+
+	return nil
+}
+
+func (d *dispatcher) speedControl() {
+	cfg, err := d.getConfig()
+	if err != nil {
+		d.log.Errorf("getConfig, err:%s", err.Error())
+	}
 
 	if d.sentNum++; d.sentNum == 1 {
-		d.starttime = time.Now()
-	} else if d.sentNum >= d.messageChanSize {
+		d.startTime = time.Now()
+	} else if d.sentNum >= cfg.Config.ConcurrentSize {
 		now := time.Now()
-		if v := d.starttime.Add(time.Second); v.After(now) {
+		if v := d.startTime.Add(time.Second); v.After(now) {
 			du := v.Sub(now)
 			time.Sleep(du)
 
@@ -114,36 +92,6 @@ func (d *dispatcher) handle(event mq.Event) error {
 
 		d.sentNum = 0
 	}
-
-	return nil
-}
-
-func (d *dispatcher) adjustConcurrentSize() {
-	cfg, err := d.getConfig()
-	if err != nil {
-		return
-	}
-
-	size := cfg.Config.ConcurrentSize
-	if size == d.messageChanSize {
-		return
-	}
-
-	msg := mq.Message{
-		Header: map[string]string{
-			headerHookDispatchAdjust: "adjust_concurrent_size",
-		},
-	}
-	d.messageChan <- &msg
-
-	<-d.messageChanEmpty
-
-	d.messageChan = make(chan *mq.Message, size)
-	d.messageChanSize = size
-
-	d.adjustmentDone <- struct{}{}
-
-	return
 }
 
 func (d *dispatcher) validateMessage(msg *mq.Message) error {
@@ -162,45 +110,25 @@ func (d *dispatcher) validateMessage(msg *mq.Message) error {
 	return nil
 }
 
-func (d *dispatcher) dispatch() {
-	send := func(msg *mq.Message) error {
-		req, err := http.NewRequest(
-			http.MethodPost, d.endpoint, bytes.NewBuffer(msg.Body),
-		)
-		if err != nil {
-			return err
-		}
+func (d *dispatcher) dispatch(msg *mq.Message) {
+	if err := d.send(msg); err != nil {
+		d.log.Errorf("send message, err:%s", err.Error())
+	}
+}
 
-		h := http.Header{}
-		for k, v := range msg.Header {
-			h.Add(k, v)
-		}
-		req.Header = h
-
-		_, err = d.hc.ForwardTo(req, nil)
-
+func (d *dispatcher) send(msg *mq.Message) error {
+	req, err := http.NewRequest(
+		http.MethodPost, d.endpoint, bytes.NewBuffer(msg.Body),
+	)
+	if err != nil {
 		return err
 	}
 
-	for {
-		select {
-		case msg := <-d.messageChan:
-			if msg.Header[headerHookDispatchAdjust] != "" {
-				d.messageChanEmpty <- struct{}{}
-
-				// Must wait. Otherwise it will listen on the old chan.
-				<-d.adjustmentDone
-
-			} else if msg.Header[headerHookDispatchExit] != "" {
-				close(d.done)
-
-				return
-
-			} else {
-				if err := send(msg); err != nil {
-					d.log.Errorf("send message, err:%s", err.Error())
-				}
-			}
-		}
+	for k, v := range msg.Header {
+		req.Header.Add(k, v)
 	}
+
+	_, err = d.hc.ForwardTo(req, nil)
+
+	return err
 }

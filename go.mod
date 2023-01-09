@@ -3,7 +3,7 @@ module github.com/opensourceways/robot-hook-dispatcher
 go 1.18
 
 require (
-	github.com/opensourceways/community-robot-lib v0.0.0-20221016001453-0602b5e39d95
+	github.com/opensourceways/community-robot-lib v0.0.0-20221212062947-85a66b110688
 	github.com/sirupsen/logrus v1.9.0
 )
 
