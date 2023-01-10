@@ -18,31 +18,26 @@ const (
 )
 
 type dispatcher struct {
-	log       *logrus.Entry
-	hc        utils.HttpClient
-	topic     string
-	endpoint  string
-	userAgent string
-	getConfig func() (*configuration, error)
+	hc             utils.HttpClient
+	topic          string
+	endpoint       string
+	userAgent      string
+	concurrentSize func() (int, error)
 
 	startTime time.Time
 	sentNum   int
 }
 
-func newDispatcher(getConfig func() (*configuration, error), log *logrus.Entry) (*dispatcher, error) {
-	v, err := getConfig()
-	if err != nil {
-		return nil, err
-	}
-	cfg := &v.Config
-
+func newDispatcher(
+	cfg *configuration,
+	concurrentSize func() (int, error),
+) (*dispatcher, error) {
 	return &dispatcher{
-		log:       log,
-		hc:        utils.NewHttpClient(3),
-		topic:     cfg.Topic,
-		endpoint:  cfg.AccessEndpoint,
-		userAgent: cfg.UserAgent,
-		getConfig: getConfig,
+		hc:             utils.NewHttpClient(3),
+		topic:          cfg.Topic,
+		endpoint:       cfg.AccessEndpoint,
+		userAgent:      cfg.UserAgent,
+		concurrentSize: concurrentSize,
 	}, nil
 }
 
@@ -71,20 +66,20 @@ func (d *dispatcher) handle(event mq.Event) error {
 }
 
 func (d *dispatcher) speedControl() {
-	cfg, err := d.getConfig()
+	size, err := d.concurrentSize()
 	if err != nil {
-		d.log.Errorf("getConfig, err:%s", err.Error())
+		logrus.Errorf("get concurrent size, err:%s", err.Error())
 	}
 
 	if d.sentNum++; d.sentNum == 1 {
 		d.startTime = time.Now()
-	} else if d.sentNum >= cfg.Config.ConcurrentSize {
+	} else if size > 0 && d.sentNum >= size {
 		now := time.Now()
 		if v := d.startTime.Add(time.Second); v.After(now) {
 			du := v.Sub(now)
 			time.Sleep(du)
 
-			d.log.Debugf(
+			logrus.Debugf(
 				"will sleep %s after sending %d events",
 				du.String(), d.sentNum,
 			)
@@ -112,7 +107,7 @@ func (d *dispatcher) validateMessage(msg *mq.Message) error {
 
 func (d *dispatcher) dispatch(msg *mq.Message) {
 	if err := d.send(msg); err != nil {
-		d.log.Errorf("send message, err:%s", err.Error())
+		logrus.Errorf("send message, err:%s", err.Error())
 	}
 }
 
