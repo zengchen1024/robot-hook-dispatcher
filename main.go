@@ -84,16 +84,18 @@ func main() {
 	}
 
 	// init kafka
-	kafkaCfg, err := cfg.kafkaConfig()
+	_, err = cfg.kafkaConfig()
 	if err != nil {
-		logrus.Fatalf("Error loading kfk config, err:%v, %s.", err, cfg.KafkaAddress)
+		logrus.Errorf("Error loading kfk config, err:%v, %s.", err, cfg.KafkaAddress)
 	}
 
-	if err := connetKafka(&kafkaCfg); err != nil {
-		logrus.Fatalf("Error connecting kfk mq, err:%v", err)
-	}
+	/*
+		if err := connetKafka(&kafkaCfg); err != nil {
+			logrus.Fatalf("Error connecting kfk mq, err:%v", err)
+		}
 
-	defer kafka.Disconnect()
+		defer kafka.Disconnect()
+	*/
 
 	// server
 	d, err := newDispatcher(
