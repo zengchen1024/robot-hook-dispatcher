@@ -86,7 +86,7 @@ func main() {
 	// init kafka
 	kafkaCfg, err := cfg.kafkaConfig()
 	if err != nil {
-		logrus.Fatalf("Error loading kfk config, err:%v", err)
+		logrus.Fatalf("Error loading kfk config, err:%v, %s.", err, cfg.KafkaAddress)
 	}
 
 	if err := connetKafka(&kafkaCfg); err != nil {
