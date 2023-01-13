@@ -75,6 +75,7 @@ func (d *dispatcher) speedControl() {
 		d.startTime = time.Now()
 	} else if size > 0 && d.sentNum >= size {
 		now := time.Now()
+
 		if v := d.startTime.Add(time.Second); v.After(now) {
 			du := v.Sub(now)
 			time.Sleep(du)
@@ -82,6 +83,11 @@ func (d *dispatcher) speedControl() {
 			logrus.Debugf(
 				"will sleep %s after sending %d events",
 				du.String(), d.sentNum,
+			)
+		} else {
+			logrus.Debugf(
+				"It took %s to send %d events",
+				now.Sub(d.startTime).String(), d.sentNum,
 			)
 		}
 
