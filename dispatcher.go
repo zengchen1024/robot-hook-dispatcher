@@ -66,14 +66,20 @@ func (d *dispatcher) handle(event mq.Event) error {
 }
 
 func (d *dispatcher) speedControl() {
+	if d.sentNum == 1 {
+		d.startTime = time.Now()
+
+		return
+	}
+
 	size, err := d.concurrentSize()
 	if err != nil {
 		logrus.Errorf("get concurrent size, err:%s", err.Error())
+
+		return
 	}
 
-	if d.sentNum++; d.sentNum == 1 {
-		d.startTime = time.Now()
-	} else if size > 0 && d.sentNum >= size {
+	if size > 0 && d.sentNum >= size {
 		now := time.Now()
 
 		if v := d.startTime.Add(time.Second); v.After(now) {
@@ -114,6 +120,8 @@ func (d *dispatcher) validateMessage(msg *mq.Message) error {
 func (d *dispatcher) dispatch(msg *mq.Message) {
 	if err := d.send(msg); err != nil {
 		logrus.Errorf("send message, err:%s", err.Error())
+	} else {
+		d.sentNum++
 	}
 }
 
