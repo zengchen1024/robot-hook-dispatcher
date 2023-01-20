@@ -42,7 +42,12 @@ func newDispatcher(
 }
 
 func (d *dispatcher) run(ctx context.Context) error {
-	s, err := kafka.Subscribe(d.topic, d.handle)
+	s, err := kafka.Subscribe(
+		d.topic, d.handle,
+		func(opt *mq.SubscribeOptions) {
+			opt.Queue = component
+		},
+	)
 	if err != nil {
 		return err
 	}
